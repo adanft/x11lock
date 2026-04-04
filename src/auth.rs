@@ -5,6 +5,8 @@ use std::ffi::{CStr, CString};
 use std::rc::Rc;
 use zeroize::Zeroize;
 
+const PAM_SERVICE: &str = "system-auth";
+
 pub(crate) enum AuthResult {
     Success,
     Failure(String),
@@ -20,7 +22,7 @@ pub(crate) fn authenticate(password: &str) -> Result<AuthResult> {
         messages: Rc::clone(&messages),
     };
 
-    let mut ctx = PamContext::new("system-auth", Some(&username), conv)
+    let mut ctx = PamContext::new(PAM_SERVICE, Some(&username), conv)
         .context("Failed to init PAM context")?;
 
     match ctx.authenticate(Flag::NONE) {

@@ -116,6 +116,20 @@ cp my-wallpaper.png ~/.config/x11lock/wallpaper.png
 - A PAM stack compatible with `system-auth`
 - Runtime libraries required by the system build (X11, Cairo, Pango)
 
+## PAM service
+
+`x11lock` currently uses this PAM service name:
+
+```text
+system-auth
+```
+
+This is intentionally defined in the source as a constant for now, not as a runtime
+configuration option.
+
+If your distro or PAM setup uses a different service name, change the constant in
+`src/auth.rs` and rebuild.
+
 ## Security notes
 
 - `x11lock` is an X11 locker, so its security model is limited by X11 itself
