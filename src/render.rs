@@ -101,8 +101,9 @@ fn scale_background(wallpaper: &ImageSurface, width: u16, height: u16) -> Result
 
     cr.translate((w - scaled_w) / 2.0, (h - scaled_h) / 2.0);
     cr.scale(scale, scale);
-    cr.set_source_surface(wallpaper, 0.0, 0.0).unwrap();
-    cr.paint().unwrap();
+    cr.set_source_surface(wallpaper, 0.0, 0.0)
+        .context("Failed to set cached background source")?;
+    cr.paint().context("Failed to paint cached background")?;
     drop(cr);
     surface.flush();
 
@@ -131,18 +132,21 @@ fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
 }
 
 /// Render background (wallpaper or solid color) with overlay
-fn render_background(cr: &cairo::Context, bg: &Option<ImageSurface>) {
+fn render_background(cr: &cairo::Context, bg: &Option<ImageSurface>) -> Result<()> {
     if let Some(bg) = bg {
-        cr.set_source_surface(bg, 0.0, 0.0).unwrap();
-        cr.paint().unwrap();
+        cr.set_source_surface(bg, 0.0, 0.0)
+            .context("Failed to set background surface")?;
+        cr.paint().context("Failed to paint background surface")?;
     } else {
         cr.set_source_rgb(MOCHA_BASE.0, MOCHA_BASE.1, MOCHA_BASE.2);
-        cr.paint().unwrap();
+        cr.paint().context("Failed to paint solid background")?;
     }
 
     // Semi-transparent overlay
     cr.set_source_rgba(MOCHA_BASE.0, MOCHA_BASE.1, MOCHA_BASE.2, OVERLAY_OPACITY);
-    cr.paint().unwrap();
+    cr.paint().context("Failed to paint background overlay")?;
+
+    Ok(())
 }
 
 /// Render clock and date
@@ -188,7 +192,7 @@ fn render_input_box(
     date_bottom_y: f64,
     state: LockState,
     password_len: usize,
-) {
+) -> Result<()> {
     let dots_width = if password_len > 0 {
         (password_len as f64) * DOT_SPACING + INPUT_PADDING * 2.0
     } else {
@@ -206,13 +210,13 @@ fn render_input_box(
     // Fill background
     rounded_rect(cr, input_x, input_y, input_w, INPUT_HEIGHT, INPUT_RADIUS);
     cr.set_source_rgba(MOCHA_BASE.0, MOCHA_BASE.1, MOCHA_BASE.2, INPUT_BG_OPACITY);
-    cr.fill().unwrap();
+    cr.fill().context("Failed to fill input background")?;
 
     // Draw border
     rounded_rect(cr, input_x, input_y, input_w, INPUT_HEIGHT, INPUT_RADIUS);
     cr.set_source_rgb(border_color.0, border_color.1, border_color.2);
     cr.set_line_width(BORDER_WIDTH);
-    cr.stroke().unwrap();
+    cr.stroke().context("Failed to stroke input border")?;
 
     // Draw dots
     if password_len > 0 {
@@ -229,9 +233,11 @@ fn render_input_box(
         for j in 0..password_len {
             let dx = first_dot_x + (j as f64) * DOT_SPACING;
             cr.arc(dx, dot_y, DOT_RADIUS, 0.0, 2.0 * std::f64::consts::PI);
-            cr.fill().unwrap();
+            cr.fill().context("Failed to fill password dot")?;
         }
     }
+
+    Ok(())
 }
 
 /// Render authentication error message
@@ -319,7 +325,7 @@ pub(crate) fn render_frame(
         let cr = cairo::Context::new(&surface).context("Failed to create Cairo context")?;
 
         // Render background with overlay
-        render_background(&cr, bg);
+        render_background(&cr, bg)?;
 
         let center_x = w / 2.0;
         let center_y = h / 2.0;
@@ -328,7 +334,7 @@ pub(crate) fn render_frame(
         let date_bottom_y = render_time(&cr, center_x, center_y);
 
         // Render input box
-        render_input_box(&cr, center_x, date_bottom_y, state, password_len);
+        render_input_box(&cr, center_x, date_bottom_y, state, password_len)?;
 
         // Render auth error message if present
         if auth_feedback == AuthFeedback::Message {
