@@ -21,6 +21,8 @@ use crate::signals;
 mod keysyms {
     /// X11 modifier state flags
     pub const MOD_SHIFT: u16 = 0x1;
+    pub const MOD_CONTROL: u16 = 0x4;
+    pub const MOD_ALT: u16 = 0x8; // Common X11 mapping: Alt on Mod1
 
     pub const KEY_ENTER: u32 = 0xff0d; // Return key
     pub const KEY_KP_ENTER: u32 = 0xff8d; // Numeric keypad Enter
@@ -33,11 +35,9 @@ mod keysyms {
     pub const ASCII_PRINTABLE_START: u32 = 0x20;
     pub const ASCII_PRINTABLE_END: u32 = 0x7f;
 
-    /// Check if key was pressed in XKB Level 5 mode (Mod5 / ISO_Level5_Shift)
-    /// Level 5 is commonly used for multi-layout keyboards and some special combinations
-    pub fn is_level5_key(state: u16, keysym: u32, expected_keysym: u32) -> bool {
-        // XKB Level 5 flag = 0x4 in state
-        state & 0x4 != 0 && keysym == expected_keysym
+    /// Check if Ctrl+Alt+<keysym> was pressed.
+    pub fn is_ctrl_alt_key(state: u16, keysym: u32, expected_keysym: u32) -> bool {
+        state & MOD_CONTROL != 0 && state & MOD_ALT != 0 && keysym == expected_keysym
     }
 
     /// Check if keysym is a printable ASCII character
@@ -387,8 +387,8 @@ impl<'a> Locker<'a> {
                 self.clear_feedback();
                 self.set_state(LockState::Idle)?;
             }
-            // Ctrl+Alt+U to unlock (XKB level 5 mode + 'u')
-            keysym if keysyms::is_level5_key(u16::from(event.state), keysym, keysyms::KEY_U) => {
+            // Ctrl+Alt+U clears the current input and resets the visual state.
+            keysym if keysyms::is_ctrl_alt_key(u16::from(event.state), keysym, keysyms::KEY_U) => {
                 self.password_buf.clear();
                 self.clear_feedback();
                 self.set_state(LockState::Idle)?;
