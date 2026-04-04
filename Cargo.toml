@@ -16,6 +16,7 @@ cairo-rs = { version = "0.20", features = ["png"] }
 pangocairo = "0.20"
 pango = { version = "0.20", features = ["v1_44"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+zeroize = "1"
 
 [profile.release]
 opt-level = 3

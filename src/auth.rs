@@ -3,6 +3,7 @@ use pam_client2::{Context as PamContext, ErrorCode, Flag};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::rc::Rc;
+use zeroize::Zeroize;
 
 pub(crate) enum AuthResult {
     Success,
@@ -82,5 +83,11 @@ impl PasswordConv {
         if let Ok(text) = msg.to_str() {
             self.messages.borrow_mut().push(text.to_owned());
         }
+    }
+}
+
+impl Drop for PasswordConv {
+    fn drop(&mut self) {
+        self.password.zeroize();
     }
 }

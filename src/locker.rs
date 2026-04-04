@@ -11,6 +11,7 @@ use x11rb::protocol::xproto::{
 };
 use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
+use zeroize::Zeroize;
 
 use crate::auth;
 use crate::render::{self, AuthFeedback, LockState, LockWindow, RenderContext};
@@ -382,7 +383,7 @@ impl<'a> Locker<'a> {
                 self.set_state(new_state)?;
             }
             keysyms::KEY_ESCAPE => {
-                self.password_buf.clear();
+                self.password_buf.zeroize();
                 self.clear_feedback();
                 self.set_state(LockState::Idle)?;
             }
@@ -406,10 +407,12 @@ impl<'a> Locker<'a> {
     }
 
     fn try_authenticate(&mut self) -> Result<bool> {
-        let password = self.password_buf.clone();
-        self.password_buf.clear();
+        let mut password = self.password_buf.clone();
+        self.password_buf.zeroize();
 
-        let result = auth::authenticate(&password)?;
+        let result = auth::authenticate(&password);
+        password.zeroize();
+        let result = result?;
 
         match result {
             auth::AuthResult::Success => Ok(true),
