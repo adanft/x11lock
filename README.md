@@ -15,6 +15,17 @@ Secure X11 screen locker written in Rust.
 - Lightweight poll-based event loop
 - Password dots and error feedback
 
+## Keyboard input support
+
+Keyboard input handling is intentionally minimal for now.
+
+- Printable ASCII input is supported
+- `Shift` is supported for the current simplified key resolution
+- Full XKB/group/layout-aware modifier handling is intentionally out of scope for now
+
+This is a deliberate scope decision, not an accidental bug. Broader keyboard/layout
+support can be added later once the intended behavior is specified clearly.
+
 ## Preview
 
 ![x11lock screenshot](assets/x11lock.png)

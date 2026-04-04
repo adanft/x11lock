@@ -180,7 +180,8 @@ fn render_time(cr: &cairo::Context, center_x: f64, center_y: f64) -> f64 {
     date_y + date_h as f64
 }
 
-/// Render input box with password dots
+/// Render input box with password dots.
+/// The locker intentionally hides typed input during normal operation.
 fn render_input_box(
     cr: &cairo::Context,
     center_x: f64,

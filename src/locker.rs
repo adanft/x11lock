@@ -447,6 +447,9 @@ impl<'a> Locker<'a> {
             return Ok(0);
         }
 
+        // Intentionally keep keyboard resolution minimal for now: ASCII printable input
+        // with Shift support only. Full XKB/group/modifier handling is out of scope until
+        // keyboard/layout support is explicitly expanded and documented.
         let shift_pressed = state & keysyms::MOD_SHIFT != 0;
         let idx = if shift_pressed && mapping.keysyms.len() > 1 {
             1
