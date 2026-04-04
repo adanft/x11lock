@@ -43,14 +43,8 @@ pub(crate) fn authenticate(password: &str) -> Result<AuthResult> {
 }
 
 fn get_current_username() -> Result<String> {
-    // Try environment variables first, then fallback to /etc/passwd
-    let user = std::env::var("USER").ok().filter(|u| !u.is_empty());
-    let logname = std::env::var("LOGNAME").ok().filter(|l| !l.is_empty());
-
-    if let Some(username) = user.or(logname) {
-        return Ok(username);
-    }
-
+    // Always resolve the real user from the process UID instead of trusting
+    // environment variables such as USER/LOGNAME, which are user-controlled.
     let uid = nix::unistd::getuid();
     let passwd = nix::unistd::User::from_uid(uid)
         .context("Failed to read /etc/passwd")?
