@@ -9,7 +9,6 @@ use x11rb::connection::Connection;
 use x11rb::rust_connection::RustConnection;
 
 fn main() -> Result<()> {
-    signals::block_sigusr1().context("Failed to block SIGUSR1")?;
     signals::register_signal_handlers().context("Failed to register signal handlers")?;
 
     let (conn, screen_num) =

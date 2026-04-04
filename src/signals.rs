@@ -27,10 +27,3 @@ pub(crate) fn register_signal_handlers() -> Result<()> {
 pub(crate) fn termination_requested() -> bool {
     TERMINATION_REQUESTED.load(Ordering::Relaxed)
 }
-
-pub(crate) fn block_sigusr1() -> Result<()> {
-    let mut mask = SigSet::empty();
-    mask.add(Signal::SIGUSR1);
-    nix::sys::signal::pthread_sigmask(nix::sys::signal::SigmaskHow::SIG_BLOCK, Some(&mask), None)?;
-    Ok(())
-}
