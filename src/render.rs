@@ -9,12 +9,6 @@ use x11rb::protocol::xproto::{
 };
 use x11rb::rust_connection::RustConnection;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AuthFeedback {
-    None,
-    Message,
-}
-
 pub(crate) const COLOR_BASE: u32 = 0x1e1e2e;
 
 const MOCHA_TEXT: (f64, f64, f64) = (0.804, 0.839, 0.957); // #cdd6f4
@@ -390,7 +384,7 @@ pub(crate) fn render_frame(
     render_ctx: &mut RenderContext,
     state: LockState,
     password_len: usize,
-    auth_feedback: AuthFeedback,
+    show_auth_message: bool,
     auth_message: Option<&str>,
     screen_num: usize,
 ) -> Result<()> {
@@ -419,7 +413,7 @@ pub(crate) fn render_frame(
         render_input_box(&cr, center_x, date_bottom_y, state, password_len)?;
 
         // Render auth error message if present
-        if auth_feedback == AuthFeedback::Message {
+        if show_auth_message {
             let input_y = date_bottom_y + INPUT_SPACING;
             let fail_text = auth_message.unwrap_or("Authentication failed");
             render_auth_message(&cr, text_cache, center_x, input_y, fail_text);

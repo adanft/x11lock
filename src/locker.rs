@@ -14,7 +14,7 @@ use x11rb::rust_connection::RustConnection;
 use zeroize::Zeroize;
 
 use crate::auth;
-use crate::render::{self, AuthFeedback, LockState, LockWindow, RenderContext};
+use crate::render::{self, LockState, LockWindow, RenderContext};
 use crate::signals;
 
 /// X11 keysym constants for special keys
@@ -68,7 +68,7 @@ pub(crate) struct Locker<'a> {
     cursor: u32,
     render_ctx: Option<RenderContext>,
     last_render: Instant,
-    auth_feedback: AuthFeedback,
+    show_auth_message: bool,
     auth_message: Option<String>,
 }
 
@@ -88,7 +88,7 @@ impl<'a> Locker<'a> {
             cursor: x11rb::NONE,
             render_ctx: None,
             last_render: Instant::now(),
-            auth_feedback: AuthFeedback::None,
+            show_auth_message: false,
             auth_message: None,
         }
     }
@@ -193,7 +193,7 @@ impl<'a> Locker<'a> {
                 ctx,
                 self.state,
                 self.password_buf.len(),
-                self.auth_feedback,
+                self.show_auth_message,
                 self.auth_message.as_deref(),
                 self.screen_num,
             )?;
@@ -450,7 +450,7 @@ impl<'a> Locker<'a> {
         match result {
             auth::AuthResult::Success => Ok(true),
             auth::AuthResult::Failure(message) => {
-                self.auth_feedback = AuthFeedback::Message;
+                self.show_auth_message = true;
                 self.auth_message = Some(message);
                 self.set_state(LockState::Error)?;
                 Ok(false)
@@ -464,7 +464,7 @@ impl<'a> Locker<'a> {
     }
 
     fn clear_feedback(&mut self) {
-        self.auth_feedback = AuthFeedback::None;
+        self.show_auth_message = false;
         self.auth_message = None;
     }
 
