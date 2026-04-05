@@ -1,7 +1,11 @@
 [package]
 name = "x11lock"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+description = "Secure X11 screen locker written in Rust"
+license = "MIT"
+repository = "https://github.com/adanft/x11lock"
+readme = "README.md"
 
 [[bin]]
 name = "x11lock"
