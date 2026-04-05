@@ -155,7 +155,7 @@ impl<'a> Locker<'a> {
     }
 
     fn render(&mut self) -> Result<()> {
-        if let Some(ref ctx) = self.render_ctx {
+        if let Some(ref mut ctx) = self.render_ctx {
             render::render_frame(
                 self.conn,
                 &self.windows,

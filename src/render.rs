@@ -61,6 +61,7 @@ pub(crate) struct LockWindow {
 
 pub(crate) struct RenderContext {
     backgrounds: Vec<Option<ImageSurface>>,
+    frame_surfaces: Vec<ImageSurface>,
 }
 
 impl RenderContext {
@@ -69,6 +70,14 @@ impl RenderContext {
         let path = format!("{}/{}", home, WALLPAPER_PATH);
 
         let mut backgrounds = Vec::with_capacity(windows.len());
+        let mut frame_surfaces = Vec::with_capacity(windows.len());
+
+        for win in windows {
+            frame_surfaces.push(
+                ImageSurface::create(Format::ARgb32, i32::from(win.width), i32::from(win.height))
+                    .context("Failed to create reusable frame surface")?,
+            );
+        }
 
         if let Ok(mut file) = File::open(&path) {
             let wallpaper = ImageSurface::create_from_png(&mut file)
@@ -81,7 +90,10 @@ impl RenderContext {
             backgrounds.resize_with(windows.len(), || None);
         }
 
-        Ok(Self { backgrounds })
+        Ok(Self {
+            backgrounds,
+            frame_surfaces,
+        })
     }
 }
 
@@ -305,7 +317,7 @@ fn blit_to_window(
 pub(crate) fn render_frame(
     conn: &RustConnection,
     windows: &[LockWindow],
-    render_ctx: &RenderContext,
+    render_ctx: &mut RenderContext,
     state: LockState,
     password_len: usize,
     auth_feedback: AuthFeedback,
@@ -318,11 +330,9 @@ pub(crate) fn render_frame(
         let w = win.width as f64;
         let h = win.height as f64;
         let bg = &render_ctx.backgrounds[i];
+        let surface = &mut render_ctx.frame_surfaces[i];
 
-        let mut surface = ImageSurface::create(Format::ARgb32, win.width as i32, win.height as i32)
-            .context("Failed to create frame surface")?;
-
-        let cr = cairo::Context::new(&surface).context("Failed to create Cairo context")?;
+        let cr = cairo::Context::new(&*surface).context("Failed to create Cairo context")?;
 
         // Render background with overlay
         render_background(&cr, bg)?;
@@ -344,9 +354,10 @@ pub(crate) fn render_frame(
         }
 
         drop(cr);
+        surface.flush();
 
         // Blit to X11 window
-        blit_to_window(conn, screen, win, &mut surface)?;
+        blit_to_window(conn, screen, win, surface)?;
     }
 
     conn.flush()?;
