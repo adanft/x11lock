@@ -60,6 +60,9 @@ pub(crate) struct Locker<'a> {
     conn: &'a RustConnection,
     screen_num: usize,
     windows: Vec<LockWindow>,
+    min_keycode: u8,
+    keysyms_per_keycode: u8,
+    keyboard_mapping: Vec<u32>,
     password_buf: String,
     state: LockState,
     cursor: u32,
@@ -71,10 +74,15 @@ pub(crate) struct Locker<'a> {
 
 impl<'a> Locker<'a> {
     pub(crate) fn new(conn: &'a RustConnection, screen_num: usize) -> Self {
+        let setup = conn.setup();
+
         Self {
             conn,
             screen_num,
             windows: Vec::new(),
+            min_keycode: setup.min_keycode,
+            keysyms_per_keycode: 0,
+            keyboard_mapping: Vec::new(),
             password_buf: String::new(),
             state: LockState::Idle,
             cursor: x11rb::NONE,
@@ -112,6 +120,24 @@ impl<'a> Locker<'a> {
     pub(crate) fn load_background(&mut self) -> Result<()> {
         let screen = &self.conn.setup().roots[self.screen_num];
         self.render_ctx = Some(RenderContext::load(self.conn, screen, &self.windows)?);
+        self.load_keyboard_mapping()?;
+        Ok(())
+    }
+
+    fn load_keyboard_mapping(&mut self) -> Result<()> {
+        let setup = self.conn.setup();
+        let count = setup.max_keycode - setup.min_keycode + 1;
+        let reply = self
+            .conn
+            .get_keyboard_mapping(setup.min_keycode, count)
+            .context("Failed to get keyboard mapping")?
+            .reply()
+            .context("Keyboard mapping reply failed")?;
+
+        self.min_keycode = setup.min_keycode;
+        self.keysyms_per_keycode = reply.keysyms_per_keycode;
+        self.keyboard_mapping = reply.keysyms;
+
         Ok(())
     }
 
@@ -444,14 +470,27 @@ impl<'a> Locker<'a> {
     }
 
     fn keycode_to_keysym(&self, keycode: u8, state: u16) -> Result<u32> {
-        let mapping = self
-            .conn
-            .get_keyboard_mapping(keycode, 1)
-            .context("Failed to get keyboard mapping")?
-            .reply()
-            .context("Keyboard mapping reply failed")?;
+        if self.keyboard_mapping.is_empty() || keycode < self.min_keycode {
+            return Ok(0);
+        }
 
-        if mapping.keysyms.is_empty() {
+        let keycode_idx = usize::from(keycode - self.min_keycode);
+        let stride = usize::from(self.keysyms_per_keycode);
+
+        if stride == 0 {
+            return Ok(0);
+        }
+
+        let start = keycode_idx * stride;
+        let end = start + stride;
+
+        if end > self.keyboard_mapping.len() {
+            return Ok(0);
+        }
+
+        let mapping = &self.keyboard_mapping[start..end];
+
+        if mapping.is_empty() {
             return Ok(0);
         }
 
@@ -459,12 +498,12 @@ impl<'a> Locker<'a> {
         // with Shift support only. Full XKB/group/modifier handling is out of scope until
         // keyboard/layout support is explicitly expanded and documented.
         let shift_pressed = state & keysyms::MOD_SHIFT != 0;
-        let idx = if shift_pressed && mapping.keysyms.len() > 1 {
+        let idx = if shift_pressed && mapping.len() > 1 {
             1
         } else {
             0
         };
 
-        Ok(mapping.keysyms[idx])
+        Ok(mapping[idx])
     }
 }
