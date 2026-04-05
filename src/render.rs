@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use cairo::{Format, ImageSurface};
-use chrono::Local;
+use nix::libc;
 use pangocairo::functions::{create_layout, show_layout, update_layout};
 use std::fs::File;
 use x11rb::connection::Connection;
@@ -8,6 +8,31 @@ use x11rb::protocol::xproto::{
     ConnectionExt as XprotoExt, Gcontext, ImageFormat, Pixmap, Screen, Window,
 };
 use x11rb::rust_connection::RustConnection;
+
+const WEEKDAY_NAMES: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+
+const MONTH_NAMES: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 pub(crate) const COLOR_BASE: u32 = 0x1e1e2e;
 
@@ -243,9 +268,7 @@ fn render_time(
     center_x: f64,
     center_y: f64,
 ) -> f64 {
-    let now = Local::now();
-    let time_str = now.format("%H:%M").to_string();
-    let date_str = now.format("%A, %B %d").to_string();
+    let (time_str, date_str) = current_time_strings();
 
     update_layout(cr, &text_cache.time.layout);
     update_layout(cr, &text_cache.date.layout);
@@ -269,6 +292,44 @@ fn render_time(
     show_layout(cr, &text_cache.date.layout);
 
     date_y + date_h as f64
+}
+
+fn current_time_strings() -> (String, String) {
+    let mut now: libc::time_t = 0;
+    let now_ptr = &mut now as *mut libc::time_t;
+
+    // SAFETY: `time` writes the current epoch seconds into `now_ptr`, which points to
+    // valid writable memory for a `time_t`.
+    unsafe {
+        libc::time(now_ptr);
+    }
+
+    let mut local_tm = std::mem::MaybeUninit::<libc::tm>::uninit();
+
+    // SAFETY: `localtime_r` initializes `local_tm` from the valid `time_t` stored in `now`.
+    let tm = unsafe {
+        libc::localtime_r(now_ptr, local_tm.as_mut_ptr());
+        local_tm.assume_init()
+    };
+
+    let hour = tm.tm_hour;
+    let minute = tm.tm_min;
+    let day = tm.tm_mday;
+    let weekday = usize::try_from(tm.tm_wday)
+        .ok()
+        .and_then(|idx| WEEKDAY_NAMES.get(idx))
+        .copied()
+        .unwrap_or("Unknown");
+    let month = usize::try_from(tm.tm_mon)
+        .ok()
+        .and_then(|idx| MONTH_NAMES.get(idx))
+        .copied()
+        .unwrap_or("Unknown");
+
+    (
+        format!("{hour:02}:{minute:02}"),
+        format!("{weekday}, {month} {day:02}"),
+    )
 }
 
 /// Render input box with password dots.
