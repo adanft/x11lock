@@ -89,7 +89,7 @@ impl<'a> Locker<'a> {
         let screen = &self.conn.setup().roots[self.screen_num];
 
         // Initialize cursor first (separate responsibility)
-        self.init_cursor(screen)?;
+        self.init_cursor(screen);
 
         // Then create lock windows for each monitor
         for monitor in monitors {
@@ -105,9 +105,8 @@ impl<'a> Locker<'a> {
     }
 
     /// Initialize invisible cursor (single responsibility)
-    fn init_cursor(&mut self, screen: &Screen) -> Result<()> {
+    fn init_cursor(&mut self, screen: &Screen) {
         self.cursor = self.create_invisible_cursor(screen).unwrap_or(x11rb::NONE);
-        Ok(())
     }
 
     pub(crate) fn load_background(&mut self) -> Result<()> {
