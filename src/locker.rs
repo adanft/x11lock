@@ -441,8 +441,7 @@ impl<'a> Locker<'a> {
     }
 
     fn try_authenticate(&mut self) -> Result<bool> {
-        let mut password = self.password_buf.clone();
-        self.password_buf.zeroize();
+        let mut password = std::mem::take(&mut self.password_buf);
 
         let result = auth::authenticate(&password);
         password.zeroize();
