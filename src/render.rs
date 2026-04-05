@@ -4,7 +4,9 @@ use chrono::Local;
 use pangocairo::functions::{create_layout, show_layout};
 use std::fs::File;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConnectionExt as XprotoExt, ImageFormat, Screen, Window};
+use x11rb::protocol::xproto::{
+    ConnectionExt as XprotoExt, Gcontext, ImageFormat, Pixmap, Screen, Window,
+};
 use x11rb::rust_connection::RustConnection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,21 +64,46 @@ pub(crate) struct LockWindow {
 pub(crate) struct RenderContext {
     backgrounds: Vec<Option<ImageSurface>>,
     frame_surfaces: Vec<ImageSurface>,
+    blit_resources: Vec<BlitResources>,
+}
+
+struct BlitResources {
+    pixmap: Pixmap,
+    gc: Gcontext,
 }
 
 impl RenderContext {
-    pub(crate) fn load(windows: &[LockWindow]) -> Result<Self> {
+    pub(crate) fn load(
+        conn: &RustConnection,
+        screen: &Screen,
+        windows: &[LockWindow],
+    ) -> Result<Self> {
         let home = std::env::var("HOME").context("HOME not set")?;
         let path = format!("{}/{}", home, WALLPAPER_PATH);
 
         let mut backgrounds = Vec::with_capacity(windows.len());
         let mut frame_surfaces = Vec::with_capacity(windows.len());
+        let mut blit_resources = Vec::with_capacity(windows.len());
 
         for win in windows {
             frame_surfaces.push(
                 ImageSurface::create(Format::ARgb32, i32::from(win.width), i32::from(win.height))
                     .context("Failed to create reusable frame surface")?,
             );
+
+            let pixmap = conn.generate_id()?;
+            conn.create_pixmap(
+                screen.root_depth,
+                pixmap,
+                screen.root,
+                win.width,
+                win.height,
+            )?;
+
+            let gc = conn.generate_id()?;
+            conn.create_gc(gc, pixmap, &x11rb::protocol::xproto::CreateGCAux::new())?;
+
+            blit_resources.push(BlitResources { pixmap, gc });
         }
 
         if let Ok(mut file) = File::open(&path) {
@@ -93,7 +120,17 @@ impl RenderContext {
         Ok(Self {
             backgrounds,
             frame_surfaces,
+            blit_resources,
         })
+    }
+
+    pub(crate) fn cleanup(&self, conn: &RustConnection) -> Result<()> {
+        for resources in &self.blit_resources {
+            conn.free_gc(resources.gc)?;
+            conn.free_pixmap(resources.pixmap)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -271,45 +308,32 @@ fn render_auth_message(cr: &cairo::Context, center_x: f64, input_y: f64, message
 /// Blit rendered surface to X11 window
 fn blit_to_window(
     conn: &RustConnection,
-    screen: &Screen,
+    root_depth: u8,
     win: &LockWindow,
+    resources: &BlitResources,
     surface: &mut ImageSurface,
 ) -> Result<()> {
     let frame_data = surface.data().context("Failed to read frame data")?;
 
-    let pixmap = conn.generate_id()?;
-    conn.create_pixmap(
-        screen.root_depth,
-        pixmap,
-        screen.root,
-        win.width,
-        win.height,
-    )?;
-
-    let gc = conn.generate_id()?;
-    conn.create_gc(gc, pixmap, &x11rb::protocol::xproto::CreateGCAux::new())?;
-
     conn.put_image(
         ImageFormat::Z_PIXMAP,
-        pixmap,
-        gc,
+        resources.pixmap,
+        resources.gc,
         win.width,
         win.height,
         0,
         0,
         0,
-        screen.root_depth,
+        root_depth,
         &frame_data,
     )?;
 
     conn.change_window_attributes(
         win.id,
-        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().background_pixmap(pixmap),
+        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+            .background_pixmap(resources.pixmap),
     )?;
     conn.clear_area(false, win.id, 0, 0, win.width, win.height)?;
-
-    conn.free_gc(gc)?;
-    conn.free_pixmap(pixmap)?;
 
     Ok(())
 }
@@ -331,6 +355,7 @@ pub(crate) fn render_frame(
         let h = win.height as f64;
         let bg = &render_ctx.backgrounds[i];
         let surface = &mut render_ctx.frame_surfaces[i];
+        let resources = &render_ctx.blit_resources[i];
 
         let cr = cairo::Context::new(&*surface).context("Failed to create Cairo context")?;
 
@@ -357,7 +382,7 @@ pub(crate) fn render_frame(
         surface.flush();
 
         // Blit to X11 window
-        blit_to_window(conn, screen, win, surface)?;
+        blit_to_window(conn, screen.root_depth, win, resources, surface)?;
     }
 
     conn.flush()?;

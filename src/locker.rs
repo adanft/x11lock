@@ -110,7 +110,8 @@ impl<'a> Locker<'a> {
     }
 
     pub(crate) fn load_background(&mut self) -> Result<()> {
-        self.render_ctx = Some(RenderContext::load(&self.windows)?);
+        let screen = &self.conn.setup().roots[self.screen_num];
+        self.render_ctx = Some(RenderContext::load(self.conn, screen, &self.windows)?);
         Ok(())
     }
 
@@ -144,6 +145,10 @@ impl<'a> Locker<'a> {
     }
 
     pub(crate) fn destroy_windows(&self) -> Result<()> {
+        if let Some(ref ctx) = self.render_ctx {
+            ctx.cleanup(self.conn)?;
+        }
+
         for win in &self.windows {
             self.conn.destroy_window(win.id)?;
         }
