@@ -46,6 +46,14 @@ less install.sh
 sudo bash install.sh
 ```
 
+At the moment, the published release binary is built for:
+
+```text
+x86_64
+```
+
+The installer currently expects that release asset format.
+
 This installs the latest released binary to:
 
 ```bash
@@ -55,6 +63,8 @@ This installs the latest released binary to:
 ### Option 2: Manual install from release
 
 Download the `x11lock` binary from GitHub Releases and copy it to `/usr/local/bin`:
+
+> Current published release binary target: `x86_64`
 
 ```bash
 chmod +x x11lock
