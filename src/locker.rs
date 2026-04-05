@@ -154,8 +154,8 @@ impl<'a> Locker<'a> {
     }
 
     pub(crate) fn grab_input(&self) -> Result<()> {
-        self.grab_keyboard()?;
-        self.grab_pointer()?;
+        self.retry_grab_keyboard()?;
+        self.retry_grab_pointer()?;
         Ok(())
     }
 
@@ -310,14 +310,6 @@ impl<'a> Locker<'a> {
         )?;
 
         Ok(window)
-    }
-
-    fn grab_keyboard(&self) -> Result<()> {
-        self.retry_grab_keyboard()
-    }
-
-    fn grab_pointer(&self) -> Result<()> {
-        self.retry_grab_pointer()
     }
 
     /// Get the window to use for grabbing input (first lock window or screen root)
