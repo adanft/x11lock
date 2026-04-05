@@ -297,6 +297,7 @@ impl<'a> Locker<'a> {
 
     fn retry_grab_keyboard(&self) -> Result<()> {
         let grab_window = self.grab_window();
+        let mut last_status = GrabStatus::SUCCESS;
 
         for attempt in 0..GRAB_RETRY_COUNT {
             let reply = self
@@ -312,25 +313,27 @@ impl<'a> Locker<'a> {
                 .reply()
                 .context("GrabKeyboard reply failed")?;
 
+            last_status = reply.status;
+
             if reply.status == GrabStatus::SUCCESS {
                 return Ok(());
             }
 
-            if attempt == GRAB_RETRY_COUNT - 1 {
-                bail!(
-                    "Failed to grab keyboard after {} attempts. Status: {:?}",
-                    GRAB_RETRY_COUNT,
-                    reply.status
-                );
+            if attempt < GRAB_RETRY_COUNT - 1 {
+                thread::sleep(Duration::from_millis(GRAB_RETRY_DELAY_MS));
             }
-
-            thread::sleep(Duration::from_millis(GRAB_RETRY_DELAY_MS));
         }
-        Ok(())
+
+        bail!(
+            "Failed to grab keyboard after {} attempts. Status: {:?}",
+            GRAB_RETRY_COUNT,
+            last_status
+        );
     }
 
     fn retry_grab_pointer(&self) -> Result<()> {
         let grab_window = self.grab_window();
+        let mut last_status = GrabStatus::SUCCESS;
 
         for attempt in 0..GRAB_RETRY_COUNT {
             let reply = self
@@ -349,21 +352,22 @@ impl<'a> Locker<'a> {
                 .reply()
                 .context("GrabPointer reply failed")?;
 
+            last_status = reply.status;
+
             if reply.status == GrabStatus::SUCCESS {
                 return Ok(());
             }
 
-            if attempt == GRAB_RETRY_COUNT - 1 {
-                bail!(
-                    "Failed to grab pointer after {} attempts. Status: {:?}",
-                    GRAB_RETRY_COUNT,
-                    reply.status
-                );
+            if attempt < GRAB_RETRY_COUNT - 1 {
+                thread::sleep(Duration::from_millis(GRAB_RETRY_DELAY_MS));
             }
-
-            thread::sleep(Duration::from_millis(GRAB_RETRY_DELAY_MS));
         }
-        Ok(())
+
+        bail!(
+            "Failed to grab pointer after {} attempts. Status: {:?}",
+            GRAB_RETRY_COUNT,
+            last_status
+        );
     }
 
     fn handle_key_press(&mut self, event: KeyPressEvent) -> Result<bool> {
