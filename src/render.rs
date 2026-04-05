@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use cairo::{Format, ImageSurface};
 use chrono::Local;
-use pangocairo::functions::{create_layout, show_layout};
+use pangocairo::functions::{create_layout, show_layout, update_layout};
 use std::fs::File;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
@@ -65,11 +65,22 @@ pub(crate) struct RenderContext {
     backgrounds: Vec<Option<ImageSurface>>,
     frame_surfaces: Vec<ImageSurface>,
     blit_resources: Vec<BlitResources>,
+    text_caches: Vec<WindowTextCache>,
 }
 
 struct BlitResources {
     pixmap: Pixmap,
     gc: Gcontext,
+}
+
+struct TextCache {
+    layout: pango::Layout,
+}
+
+struct WindowTextCache {
+    time: TextCache,
+    date: TextCache,
+    error: TextCache,
 }
 
 impl RenderContext {
@@ -84,12 +95,44 @@ impl RenderContext {
         let mut backgrounds = Vec::with_capacity(windows.len());
         let mut frame_surfaces = Vec::with_capacity(windows.len());
         let mut blit_resources = Vec::with_capacity(windows.len());
+        let mut text_caches = Vec::with_capacity(windows.len());
 
         for win in windows {
-            frame_surfaces.push(
+            let surface =
                 ImageSurface::create(Format::ARgb32, i32::from(win.width), i32::from(win.height))
-                    .context("Failed to create reusable frame surface")?,
-            );
+                    .context("Failed to create reusable frame surface")?;
+            let cr = cairo::Context::new(&surface).context("Failed to create Cairo context")?;
+
+            let mut time_font_desc = pango::FontDescription::new();
+            time_font_desc.set_family(FONT_FAMILY);
+            time_font_desc.set_absolute_size(FONT_SIZE_TIME * f64::from(pango::SCALE));
+            let time_layout = create_layout(&cr);
+            time_layout.set_font_description(Some(&time_font_desc));
+
+            let mut date_font_desc = pango::FontDescription::new();
+            date_font_desc.set_family(FONT_FAMILY);
+            date_font_desc.set_absolute_size(FONT_SIZE_DATE * f64::from(pango::SCALE));
+            let date_layout = create_layout(&cr);
+            date_layout.set_font_description(Some(&date_font_desc));
+
+            let mut error_font_desc = pango::FontDescription::new();
+            error_font_desc.set_family(FONT_FAMILY);
+            error_font_desc.set_absolute_size(FONT_SIZE_ERROR * f64::from(pango::SCALE));
+            let error_layout = create_layout(&cr);
+            error_layout.set_font_description(Some(&error_font_desc));
+
+            frame_surfaces.push(surface);
+            text_caches.push(WindowTextCache {
+                time: TextCache {
+                    layout: time_layout,
+                },
+                date: TextCache {
+                    layout: date_layout,
+                },
+                error: TextCache {
+                    layout: error_layout,
+                },
+            });
 
             let pixmap = conn.generate_id()?;
             conn.create_pixmap(
@@ -121,6 +164,7 @@ impl RenderContext {
             backgrounds,
             frame_surfaces,
             blit_resources,
+            text_caches,
         })
     }
 
@@ -199,36 +243,36 @@ fn render_background(cr: &cairo::Context, bg: &Option<ImageSurface>) -> Result<(
 }
 
 /// Render clock and date
-fn render_time(cr: &cairo::Context, center_x: f64, center_y: f64) -> f64 {
+fn render_time(
+    cr: &cairo::Context,
+    text_cache: &WindowTextCache,
+    center_x: f64,
+    center_y: f64,
+) -> f64 {
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
     let date_str = now.format("%A, %B %d").to_string();
 
-    let layout = create_layout(cr);
-    let mut font_desc = pango::FontDescription::new();
-    font_desc.set_family(FONT_FAMILY);
+    update_layout(cr, &text_cache.time.layout);
+    update_layout(cr, &text_cache.date.layout);
 
     // Time
-    font_desc.set_absolute_size(FONT_SIZE_TIME * f64::from(pango::SCALE));
-    layout.set_font_description(Some(&font_desc));
-    layout.set_text(&time_str);
-    let (time_w, time_h) = layout.pixel_size();
+    text_cache.time.layout.set_text(&time_str);
+    let (time_w, time_h) = text_cache.time.layout.pixel_size();
 
     let time_y = center_y - (time_h as f64) - TIME_OFFSET_TOP;
     cr.move_to(center_x - (time_w as f64) / 2.0, time_y);
     cr.set_source_rgb(MOCHA_TEXT.0, MOCHA_TEXT.1, MOCHA_TEXT.2);
-    show_layout(cr, &layout);
+    show_layout(cr, &text_cache.time.layout);
 
     // Date
-    font_desc.set_absolute_size(FONT_SIZE_DATE * f64::from(pango::SCALE));
-    layout.set_font_description(Some(&font_desc));
-    layout.set_text(&date_str);
-    let (date_w, date_h) = layout.pixel_size();
+    text_cache.date.layout.set_text(&date_str);
+    let (date_w, date_h) = text_cache.date.layout.pixel_size();
 
     let date_y = time_y + (time_h as f64) + DATE_SPACING;
     cr.move_to(center_x - (date_w as f64) / 2.0, date_y);
     cr.set_source_rgb(MOCHA_TEXT.0, MOCHA_TEXT.1, MOCHA_TEXT.2);
-    show_layout(cr, &layout);
+    show_layout(cr, &text_cache.date.layout);
 
     date_y + date_h as f64
 }
@@ -290,19 +334,21 @@ fn render_input_box(
 }
 
 /// Render authentication error message
-fn render_auth_message(cr: &cairo::Context, center_x: f64, input_y: f64, message: &str) {
-    let layout = create_layout(cr);
-    let mut font_desc = pango::FontDescription::new();
-    font_desc.set_family(FONT_FAMILY);
-    font_desc.set_absolute_size(FONT_SIZE_ERROR * f64::from(pango::SCALE));
-    layout.set_font_description(Some(&font_desc));
-    layout.set_text(message);
-    let (fail_w, _) = layout.pixel_size();
+fn render_auth_message(
+    cr: &cairo::Context,
+    text_cache: &WindowTextCache,
+    center_x: f64,
+    input_y: f64,
+    message: &str,
+) {
+    update_layout(cr, &text_cache.error.layout);
+    text_cache.error.layout.set_text(message);
+    let (fail_w, _) = text_cache.error.layout.pixel_size();
 
     let fail_y = input_y + INPUT_HEIGHT + ERROR_MSG_SPACING;
     cr.move_to(center_x - (fail_w as f64) / 2.0, fail_y);
     cr.set_source_rgb(MOCHA_RED.0, MOCHA_RED.1, MOCHA_RED.2);
-    show_layout(cr, &layout);
+    show_layout(cr, &text_cache.error.layout);
 }
 
 /// Blit rendered surface to X11 window
@@ -356,6 +402,7 @@ pub(crate) fn render_frame(
         let bg = &render_ctx.backgrounds[i];
         let surface = &mut render_ctx.frame_surfaces[i];
         let resources = &render_ctx.blit_resources[i];
+        let text_cache = &render_ctx.text_caches[i];
 
         let cr = cairo::Context::new(&*surface).context("Failed to create Cairo context")?;
 
@@ -366,7 +413,7 @@ pub(crate) fn render_frame(
         let center_y = h / 2.0;
 
         // Render clock and date, get bottom position
-        let date_bottom_y = render_time(&cr, center_x, center_y);
+        let date_bottom_y = render_time(&cr, text_cache, center_x, center_y);
 
         // Render input box
         render_input_box(&cr, center_x, date_bottom_y, state, password_len)?;
@@ -375,7 +422,7 @@ pub(crate) fn render_frame(
         if auth_feedback == AuthFeedback::Message {
             let input_y = date_bottom_y + INPUT_SPACING;
             let fail_text = auth_message.unwrap_or("Authentication failed");
-            render_auth_message(&cr, center_x, input_y, fail_text);
+            render_auth_message(&cr, text_cache, center_x, input_y, fail_text);
         }
 
         drop(cr);
