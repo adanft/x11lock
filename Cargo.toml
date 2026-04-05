@@ -14,7 +14,7 @@ nix = { version = "0.29", features = ["signal", "user"] }
 anyhow = "1"
 cairo-rs = { version = "0.20", features = ["png"] }
 pangocairo = "0.20"
-pango = { version = "0.20", features = ["v1_44"] }
+pango = "0.20"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zeroize = "1"
 
